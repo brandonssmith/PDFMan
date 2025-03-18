@@ -9,6 +9,8 @@ PDFMan is a comprehensive PDF management application that allows you to:
 - Analyze differences between two PDF files
 - Combine multiple PDF files
 
+I have made this app for myself simply as a replacement for the basic functions that I use in Adobe Acrobat because I'm sick of paying for nothing as it is currently broken across my apps.
+
 ## Features
 - Modern, tabbed interface for easy navigation
 - Drag-and-drop support for PDF files
