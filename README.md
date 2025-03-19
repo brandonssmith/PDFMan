@@ -1,47 +1,38 @@
-# PDFMan
+# SVG to PNG Converter
 
-PDFMan is a comprehensive PDF management application that allows you to:
-- Load and view PDF files
-- Arrange pages within PDF files
-- Remove pages from PDF files
-- Add pages to PDF files
-- Add text to PDF files
-- Analyze differences between two PDF files
-- Combine multiple PDF files
-
-I have made this app for myself simply as a replacement for the basic functions that I use in Adobe Acrobat because I'm sick of paying for nothing as it is currently broken across my apps.
+A simple GUI application to convert SVG files to PNG format with customizable dimensions.
 
 ## Features
-- Modern, tabbed interface for easy navigation
-- Drag-and-drop support for PDF files
-- Preview of PDF pages
-- Batch operations support
-- Cross-platform compatibility
+
+- Preview SVG files before conversion
+- Customize output PNG dimensions
+- Simple and intuitive interface
+- Real-time preview of the conversion
 
 ## Requirements
+
 - Python 3.8 or higher
-- Poppler (for PDF preview functionality)
-  - Windows: Download and install from [poppler releases](http://blog.alivate.com.au/poppler-windows/)
-  - Linux: `sudo apt-get install poppler-utils`
-  - macOS: `brew install poppler`
+- PyQt6
+- cairosvg
 
 ## Installation
-1. Clone this repository
-2. Create a virtual environment (recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install dependencies:
+
+1. Clone this repository or download the source code
+2. Install the required dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
 ## Usage
-Run the application:
-```bash
-python main.py
-```
+
+1. Run the application:
+   ```bash
+   python main.py
+   ```
+2. Click "Browse SVG" to select an SVG file
+3. Adjust the width and height as needed
+4. Click "Convert to PNG" to save the converted file
 
 ## License
-MIT License 
+
+This project is licensed under the MIT License - see the LICENSE file for details. 
