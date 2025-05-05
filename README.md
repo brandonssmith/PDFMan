@@ -77,3 +77,22 @@ MIT License
 ---
 
 For questions or contributions, please open an issue or pull request on GitHub.
+
+0.2 Fixes and enhancements
+Page Operations:
+-Rotate pages (90°, 180°, 270°)
+-Duplicate selected pages
+-Basic search functionality with text highlighting for found text items using PyMuPDF - If standard searching does not work OCR conversion and searching can be used.
+- Added the ability to set the DPI for document previews in Settings
+- Extract selected pages into a new PDF by right clicking selected pages
+File Management:
+-Recent files list
+Fixed:
+- scrolling was not working properly when a document is zoomed in.
+- removed "set Popplar path" icon from the menu bar.
+Export Option:
+- export selected pages to images using the right button context menu
+- “Export current page as image” and “Export all pages as images” from the Edit menu
+
+
+0.1 First Commit
