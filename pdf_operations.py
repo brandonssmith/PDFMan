@@ -130,7 +130,7 @@ class PDFOperations:
             logger.error(traceback.format_exc())
             return False
     
-    def generate_previews(self):
+    def generate_previews(self, dpi_override=None):
         """Generate preview images for all pages"""
         if not self.current_pdf:
             logger.warning("No PDF loaded, cannot generate previews")
@@ -145,9 +145,10 @@ class PDFOperations:
             logger.debug(f"Using Poppler path: {self.poppler_path}")
             logger.debug(f"Converting PDF: {self.current_path}")
             
+            dpi = dpi_override if dpi_override else getattr(self, 'preview_dpi', 150)
             self.preview_images = convert_from_path(
                 self.current_path,
-                dpi=150,  # Lower DPI for faster preview
+                dpi=dpi,
                 fmt='jpeg',
                 poppler_path=self.poppler_path
             )
