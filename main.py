@@ -20,6 +20,12 @@ import easyocr
 import numpy as np
 import json
 from pdf2image import convert_from_path
+from commands import (
+    RotatePagesCommand,
+    DuplicatePagesCommand,
+    RemovePagesCommand,
+    ReorderPagesCommand
+)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -568,6 +574,10 @@ class PDFMan(QMainWindow):
         self.selected_pages = set()
         self.last_selected_page = None
         
+        # Initialize undo/redo stacks
+        self.undo_stack = []
+        self.redo_stack = []
+        
         # Initialize recent files
         self.recent_files = []
         self.max_recent_files = 10
@@ -631,6 +641,21 @@ class PDFMan(QMainWindow):
         
         file_menu.addSeparator()
         
+        # Export submenu
+        export_menu = file_menu.addMenu("Export")
+        
+        # Export as TXT
+        export_txt_action = QAction("Export as Text...", self)
+        export_txt_action.triggered.connect(self.export_as_txt)
+        export_menu.addAction(export_txt_action)
+        
+        # Export as DOC
+        export_doc_action = QAction("Export as DOC...", self)
+        export_doc_action.triggered.connect(self.export_as_doc)
+        export_menu.addAction(export_doc_action)
+        
+        file_menu.addSeparator()
+        
         # Close action
         close_action = QAction("Close", self)
         close_action.setShortcut("Ctrl+W")
@@ -647,6 +672,22 @@ class PDFMan(QMainWindow):
         
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
+        
+        # Undo action
+        self.undo_action = QAction("Undo", self)
+        self.undo_action.setShortcut("Ctrl+Z")
+        self.undo_action.triggered.connect(self.undo)
+        self.undo_action.setEnabled(False)
+        edit_menu.addAction(self.undo_action)
+        
+        # Redo action
+        self.redo_action = QAction("Redo", self)
+        self.redo_action.setShortcut("Ctrl+Y")
+        self.redo_action.triggered.connect(self.redo)
+        self.redo_action.setEnabled(False)
+        edit_menu.addAction(self.redo_action)
+        
+        edit_menu.addSeparator()
         
         # Rotate actions
         rotate_menu = edit_menu.addMenu("Rotate")
@@ -1050,84 +1091,88 @@ class PDFMan(QMainWindow):
         self.recent_files = self.recent_files[:self.max_recent_files]
         self.update_recent_files_menu()
     
+    def execute_command(self, command):
+        """Execute a command and add it to the undo stack"""
+        if command.execute():
+            self.undo_stack.append(command)
+            self.redo_stack.clear()  # Clear redo stack when new command is executed
+            self.update_undo_redo_actions()
+            self.update_preview()
+            self.update_arrange_tab()
+            return True
+        return False
+
+    def undo(self):
+        """Undo the last command"""
+        if self.undo_stack:
+            command = self.undo_stack.pop()
+            if command.undo():
+                self.redo_stack.append(command)
+                self.update_undo_redo_actions()
+                self.update_preview()
+                self.update_arrange_tab()
+                return True
+        return False
+
+    def redo(self):
+        """Redo the last undone command"""
+        if self.redo_stack:
+            command = self.redo_stack.pop()
+            if command.execute():
+                self.undo_stack.append(command)
+                self.update_undo_redo_actions()
+                self.update_preview()
+                self.update_arrange_tab()
+                return True
+        return False
+
+    def update_undo_redo_actions(self):
+        """Update the enabled state of undo/redo actions"""
+        self.undo_action.setEnabled(len(self.undo_stack) > 0)
+        self.redo_action.setEnabled(len(self.redo_stack) > 0)
+
     def rotate_selected_pages(self, degrees):
         """Rotate selected pages by the specified degrees"""
         if not self.pdf_ops.current_pdf or not self.selected_pages:
             return
         
-        try:
-            # Create a new PDF writer
-            writer = PdfWriter()
-            
-            # Process all pages
-            for i in range(self.pdf_ops.get_total_pages()):
-                page = self.pdf_ops.get_page(i)
-                if page:
-                    if i in self.selected_pages:
-                        # Rotate the selected page
-                        page.rotate(degrees)
-                    writer.add_page(page)
-            
-            # Save to a temporary file
-            temp_file = "temp_rotated.pdf"
-            with open(temp_file, 'wb') as output_file:
-                writer.write(output_file)
-            
-            # Reload the PDF with rotated pages
-            self.handle_pdf_file(temp_file)
-            
-            # Delete the temporary file
-            os.remove(temp_file)
-            
+        command = RotatePagesCommand(self.pdf_ops, self.selected_pages, degrees)
+        if self.execute_command(command):
             self.status_bar.showMessage(f"Rotated {len(self.selected_pages)} page(s) by {degrees}°")
-        except Exception as e:
-            logger.error(f"Error rotating pages: {str(e)}")
-            logger.error(traceback.format_exc())
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"An error occurred while rotating the pages: {str(e)}"
-            )
-    
+
     def duplicate_selected_pages(self):
         """Duplicate selected pages"""
         if not self.pdf_ops.current_pdf or not self.selected_pages:
             return
         
-        try:
-            # Create a new PDF writer
-            writer = PdfWriter()
-            
-            # Process all pages
-            for i in range(self.pdf_ops.get_total_pages()):
-                page = self.pdf_ops.get_page(i)
-                if page:
-                    writer.add_page(page)
-                    # If this is a selected page, add it again
-                    if i in self.selected_pages:
-                        writer.add_page(page)
-            
-            # Save to a temporary file
-            temp_file = "temp_duplicated.pdf"
-            with open(temp_file, 'wb') as output_file:
-                writer.write(output_file)
-            
-            # Reload the PDF with duplicated pages
-            self.handle_pdf_file(temp_file)
-            
-            # Delete the temporary file
-            os.remove(temp_file)
-            
+        command = DuplicatePagesCommand(self.pdf_ops, self.selected_pages)
+        if self.execute_command(command):
             self.status_bar.showMessage(f"Duplicated {len(self.selected_pages)} page(s)")
-        except Exception as e:
-            logger.error(f"Error duplicating pages: {str(e)}")
-            logger.error(traceback.format_exc())
-            QMessageBox.critical(
-                self,
-                "Error",
-                f"An error occurred while duplicating the pages: {str(e)}"
-            )
-    
+
+    def remove_selected_pages(self):
+        """Remove all selected pages"""
+        if not self.pdf_ops.current_pdf or not self.selected_pages:
+            return
+        
+        # Sort pages in reverse order to avoid index shifting
+        pages_to_remove = sorted(self.selected_pages, reverse=True)
+        
+        # Confirm with user
+        reply = QMessageBox.question(
+            self,
+            "Remove Pages",
+            f"Are you sure you want to remove {len(pages_to_remove)} page(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            command = RemovePagesCommand(self.pdf_ops, self.selected_pages)
+            if self.execute_command(command):
+                # Clear selection
+                self.selected_pages.clear()
+                self.last_selected_page = None
+                self.status_bar.showMessage(f"Removed {len(pages_to_remove)} page(s)")
+
     def handle_pdf_file(self, file_path):
         try:
             logger.debug(f"Handling PDF file: {file_path}")
@@ -1443,159 +1488,17 @@ class PDFMan(QMainWindow):
         for label in self.page_labels:
             label.setSelected(label.page_num in self.selected_pages)
     
-    def remove_selected_pages(self):
-        """Remove all selected pages"""
-        if not self.pdf_ops.current_pdf or not self.selected_pages:
+    def apply_page_arrangement(self):
+        """Apply the new page order"""
+        if not self.pdf_ops.current_pdf or not self.page_previews:
             return
         
-        # Sort pages in reverse order to avoid index shifting
-        pages_to_remove = sorted(self.selected_pages, reverse=True)
-        
-        # Confirm with user
-        reply = QMessageBox.question(
-            self,
-            "Remove Pages",
-            f"Are you sure you want to remove {len(pages_to_remove)} page(s)?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                # Create a new PDF writer
-                writer = PdfWriter()
-                
-                # Add all pages except the selected ones
-                for i in range(self.pdf_ops.get_total_pages()):
-                    if i not in self.selected_pages:
-                        page = self.pdf_ops.get_page(i)
-                        if page:
-                            writer.add_page(page)
-                
-                # Save to a temporary file
-                temp_file = "temp_removed.pdf"
-                with open(temp_file, 'wb') as output_file:
-                    writer.write(output_file)
-                
-                # Reload the PDF with the pages removed
-                self.handle_pdf_file(temp_file)
-                
-                # Delete the temporary file
-                os.remove(temp_file)
-                
-                # Clear selection
-                self.selected_pages.clear()
-                self.last_selected_page = None
-                
-                self.status_bar.showMessage(f"Removed {len(pages_to_remove)} page(s)")
-            except Exception as e:
-                logger.error(f"Error removing pages: {str(e)}")
-                logger.error(traceback.format_exc())
-                QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"An error occurred while removing the pages: {str(e)}"
-                )
-
-    def browse_pdf(self):
-        """Open file dialog to select a PDF file"""
-        if self.pdf_ops.has_unsaved_changes():
-            reply = QMessageBox.question(
-                self, "Unsaved Changes",
-                "You have unsaved changes. Do you want to save them before opening a new file?",
-                QMessageBox.StandardButton.Save | 
-                QMessageBox.StandardButton.Discard | 
-                QMessageBox.StandardButton.Cancel
-            )
-            
-            if reply == QMessageBox.StandardButton.Save:
-                if not self.save_pdf():
-                    return
-            elif reply == QMessageBox.StandardButton.Cancel:
-                return
-        
-        file_name, _ = QFileDialog.getOpenFileName(
-            self, "Open PDF File", "", "PDF Files (*.pdf)")
-        if file_name:
-            self.handle_pdf_file(file_name)
-
-    def update_preview(self):
-        """Update the PDF preview display"""
-        try:
-            if not self.pdf_ops.current_pdf:
-                self.preview_label.clear()
-                self.preview_label.setText("No PDF loaded")
-                return
-            
-            preview = self.pdf_ops.get_current_preview()
-            if preview:
-                try:
-                    # Convert PIL Image to QPixmap
-                    logger.debug(f"Converting preview image: size={preview.size}, mode={preview.mode}")
-                    
-                    # Resize the image to a more manageable size before conversion
-                    max_size = 1200  # Maximum dimension size for better quality
-                    if preview.size[0] > max_size or preview.size[1] > max_size:
-                        ratio = min(max_size / preview.size[0], max_size / preview.size[1])
-                        new_size = (int(preview.size[0] * ratio), int(preview.size[1] * ratio))
-                        preview = preview.resize(new_size, Image.Resampling.LANCZOS)
-                        logger.debug(f"Resized image to: {new_size}")
-                    
-                    # Convert to RGB if not already
-                    if preview.mode != 'RGB':
-                        preview = preview.convert('RGB')
-                    
-                    # Convert PIL Image to QPixmap directly
-                    img_data = preview.tobytes("raw", "RGB")
-                    qimg = QImage(img_data, preview.size[0], preview.size[1], preview.size[0] * 3, QImage.Format.Format_RGB888)
-                    pixmap = QPixmap.fromImage(qimg)
-                    
-                    if pixmap.isNull():
-                        raise Exception("Failed to create QPixmap from QImage")
-                    
-                    # Set the pixmap
-                    self.preview_label.setPixmap(pixmap)
-                    self.preview_label.setText("")  # Clear any error text
-                    
-                    logger.debug("Successfully converted and displayed preview")
-                    
-                except Exception as e:
-                    logger.error(f"Error converting preview image: {str(e)}")
-                    logger.error(traceback.format_exc())
-                    self.preview_label.setText("Error displaying PDF preview")
-            else:
-                logger.warning("No preview available")
-                self.preview_label.setText("Error: Could not generate preview")
-        except Exception as e:
-            logger.error(f"Error in update_preview: {str(e)}")
-            logger.error(traceback.format_exc())
-            self.preview_label.setText("Error updating preview")
-
-    def update_page_controls(self):
-        """Update page navigation controls"""
-        total_pages = self.pdf_ops.get_total_pages()
-        current_page = self.pdf_ops.get_current_page_number()
-        
-        self.page_spin.setMaximum(total_pages)
-        self.page_spin.setValue(current_page)
-        self.page_count_label.setText(f"/ {total_pages}")
-
-    def next_page(self):
-        """Move to next page"""
-        if self.pdf_ops.next_page():
-            self.update_preview()
-            self.update_page_controls()
-
-    def previous_page(self):
-        """Move to previous page"""
-        if self.pdf_ops.previous_page():
-            self.update_preview()
-            self.update_page_controls()
-
-    def go_to_page(self, page_number):
-        """Go to specific page"""
-        if self.pdf_ops.go_to_page(page_number - 1):
-            self.update_preview()
-            self.update_page_controls()
+        command = ReorderPagesCommand(self.pdf_ops, self.page_previews)
+        if self.execute_command(command):
+            QMessageBox.information(self, "Success", "Page order has been updated successfully!")
+            self.status_bar.showMessage("Page order updated")
+            # Reload the PDF to show the new order
+            self.handle_pdf_file(self.pdf_ops.current_path)
 
     def setup_arrange_tab(self):
         """Set up the arrange tab for page management"""
@@ -1715,40 +1618,6 @@ class PDFMan(QMainWindow):
         # Update the layout
         self.arrange_container.updateGeometry()
         self.arrange_container.update()
-
-    def apply_page_arrangement(self):
-        """Apply the new page order"""
-        if not self.pdf_ops.current_pdf or not self.page_previews:
-            return
-        
-        try:
-            # Get the output file name
-            file_name, _ = QFileDialog.getSaveFileName(
-                self, "Save Reordered PDF", "", "PDF Files (*.pdf)")
-            if not file_name:
-                return
-            
-            # Create a new PDF writer
-            writer = PdfWriter()
-            
-            # Add pages in the new order
-            for page_num in self.page_previews:
-                page = self.pdf_ops.get_page(page_num)
-                if page:
-                    writer.add_page(page)
-            
-            # Write to file
-            with open(file_name, 'wb') as output_file:
-                writer.write(output_file)
-            
-            QMessageBox.information(self, "Success", "Page order has been updated successfully!")
-            self.status_bar.showMessage("Page order updated")
-            # Reload the PDF to show the new order
-            self.handle_pdf_file(file_name)
-        except Exception as e:
-            logger.error(f"Error applying page arrangement: {str(e)}")
-            logger.error(traceback.format_exc())
-            QMessageBox.critical(self, "Error", f"An error occurred while updating the page order: {str(e)}")
 
     def setup_compare_tab(self):
         """Set up the Compare PDFs tab"""
@@ -2461,6 +2330,131 @@ class PDFMan(QMainWindow):
                 self.preview_dpi = 150
         except Exception:
             self.preview_dpi = 150
+
+    def export_as_txt(self):
+        """Export the current PDF as a text file"""
+        if not self.pdf_ops.current_pdf:
+            QMessageBox.warning(self, "No File", "No PDF file is currently loaded.")
+            return
+        
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, "Export as Text", "", "Text Files (*.txt)")
+        if file_name:
+            if self.pdf_ops.export_to_txt(file_name):
+                self.status_bar.showMessage(f"Exported as text: {file_name}")
+                QMessageBox.information(self, "Success", "PDF exported as text successfully!")
+            else:
+                QMessageBox.critical(self, "Error", "Failed to export PDF as text.")
+
+    def export_as_doc(self):
+        """Export the current PDF as a DOC file"""
+        if not self.pdf_ops.current_pdf:
+            QMessageBox.warning(self, "No File", "No PDF file is currently loaded.")
+            return
+        
+        file_name, _ = QFileDialog.getSaveFileName(
+            self, "Export as DOC", "", "Word Documents (*.docx)")
+        if file_name:
+            if self.pdf_ops.export_to_doc(file_name):
+                self.status_bar.showMessage(f"Exported as DOC: {file_name}")
+                QMessageBox.information(self, "Success", "PDF exported as DOC successfully!")
+            else:
+                QMessageBox.critical(self, "Error", "Failed to export PDF as DOC.")
+
+    def browse_pdf(self):
+        """Open file dialog to select a PDF file"""
+        if self.pdf_ops.has_unsaved_changes():
+            reply = QMessageBox.question(
+                self, "Unsaved Changes",
+                "You have unsaved changes. Do you want to save them before opening a new file?",
+                QMessageBox.StandardButton.Save | 
+                QMessageBox.StandardButton.Discard | 
+                QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Save:
+                if not self.save_pdf():
+                    return
+            elif reply == QMessageBox.StandardButton.Cancel:
+                return
+        
+        file_name, _ = QFileDialog.getOpenFileName(
+            self, "Open PDF File", "", "PDF Files (*.pdf)")
+        if file_name:
+            self.handle_pdf_file(file_name)
+
+    def previous_page(self):
+        """Move to previous page"""
+        if self.pdf_ops.previous_page():
+            self.update_preview()
+            self.update_page_controls()
+
+    def next_page(self):
+        """Move to next page"""
+        if self.pdf_ops.next_page():
+            self.update_preview()
+            self.update_page_controls()
+
+    def update_page_controls(self):
+        """Update page navigation controls"""
+        total_pages = self.pdf_ops.get_total_pages()
+        current_page = self.pdf_ops.get_current_page_number()
+        
+        self.page_spin.setMaximum(total_pages)
+        self.page_spin.setValue(current_page)
+        self.page_count_label.setText(f"/ {total_pages}")
+
+    def update_preview(self):
+        """Update the PDF preview display"""
+        try:
+            if not self.pdf_ops.current_pdf:
+                self.preview_label.clear()
+                self.preview_label.setText("No PDF loaded")
+                return
+            
+            preview = self.pdf_ops.get_current_preview()
+            if preview:
+                try:
+                    # Convert PIL Image to QPixmap
+                    logger.debug(f"Converting preview image: size={preview.size}, mode={preview.mode}")
+                    
+                    # Resize the image to a more manageable size before conversion
+                    max_size = 1200  # Maximum dimension size for better quality
+                    if preview.size[0] > max_size or preview.size[1] > max_size:
+                        ratio = min(max_size / preview.size[0], max_size / preview.size[1])
+                        new_size = (int(preview.size[0] * ratio), int(preview.size[1] * ratio))
+                        preview = preview.resize(new_size, Image.Resampling.LANCZOS)
+                        logger.debug(f"Resized image to: {new_size}")
+                    
+                    # Convert to RGB if not already
+                    if preview.mode != 'RGB':
+                        preview = preview.convert('RGB')
+                    
+                    # Convert PIL Image to QPixmap directly
+                    img_data = preview.tobytes("raw", "RGB")
+                    qimg = QImage(img_data, preview.size[0], preview.size[1], preview.size[0] * 3, QImage.Format.Format_RGB888)
+                    pixmap = QPixmap.fromImage(qimg)
+                    
+                    if pixmap.isNull():
+                        raise Exception("Failed to create QPixmap from QImage")
+                    
+                    # Set the pixmap
+                    self.preview_label.setPixmap(pixmap)
+                    self.preview_label.setText("")  # Clear any error text
+                    
+                    logger.debug("Successfully converted and displayed preview")
+                    
+                except Exception as e:
+                    logger.error(f"Error converting preview image: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    self.preview_label.setText("Error displaying PDF preview")
+            else:
+                logger.warning("No preview available")
+                self.preview_label.setText("Error: Could not generate preview")
+        except Exception as e:
+            logger.error(f"Error in update_preview: {str(e)}")
+            logger.error(traceback.format_exc())
+            self.preview_label.setText("Error updating preview")
 
 def main():
     app = QApplication(sys.argv)

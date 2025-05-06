@@ -9,6 +9,7 @@ import platform
 import subprocess
 import winreg
 import traceback
+from docx import Document
 
 # Set up logging
 logging.basicConfig(
@@ -271,6 +272,49 @@ class PDFOperations:
         if self.current_pdf and 0 <= page_number < len(self.current_pdf.pages):
             return self.current_pdf.pages[page_number]
         return None
+
+    def export_to_txt(self, output_file):
+        """Export the current PDF to a text file"""
+        try:
+            if not self.current_pdf:
+                logger.error("No PDF loaded to export")
+                return False
+
+            with open(output_file, 'w', encoding='utf-8') as f:
+                for page in self.current_pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        f.write(text + '\n\n')
+            
+            logger.info(f"Successfully exported PDF to text file: {output_file}")
+            return True
+        except Exception as e:
+            logger.error(f"Error exporting to text: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
+
+    def export_to_doc(self, output_file):
+        """Export the current PDF to a DOC file"""
+        try:
+            if not self.current_pdf:
+                logger.error("No PDF loaded to export")
+                return False
+
+            doc = Document()
+
+            for page in self.current_pdf.pages:
+                text = page.extract_text()
+                if text:
+                    doc.add_paragraph(text)
+                doc.add_page_break()
+            
+            doc.save(output_file)
+            logger.info(f"Successfully exported PDF to DOC file: {output_file}")
+            return True
+        except Exception as e:
+            logger.error(f"Error exporting to DOC: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
 
     def combine_pdfs(self, pdf_files, output_file):
         """Combine multiple PDF files into a single PDF"""
